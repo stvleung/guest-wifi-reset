@@ -1,0 +1,96 @@
+#!/usr/bin/env perl
+use Mojolicious::Lite;
+use Mojo::Log;
+use Capture::Tiny qw(tee);
+
+plugin AccessLog => { log => 'access.log' };
+
+app->log( Mojo::Log->new( path => 'error.log' ) );
+
+get '/' => sub {
+    my $self = shift;
+    $self->render( 'index' );
+};
+
+post '/reset' => sub {
+    my $self = shift;
+
+    my ( $stdout, $stderr, $code ) = tee {
+        system( './reset' );
+        $? >> 8;
+    };
+
+    my $result = $code ? 'failure' : 'success';
+
+    if ( $result eq 'failure' ) {
+        app->log->error( 'system call failed' );
+        app->log->debug( "STDOUT: $stdout", "STDERR: $stderr" );
+    }
+
+    $self->render( json => { result => $result } );
+};
+
+app->start;
+__DATA__
+
+@@ index.html.ep
+% layout 'default';
+% title 'Guest WiFi Reset Button';
+
+<nav class="navbar navbar-default" role="navigation">
+  <!-- Brand and toggle get grouped for better mobile display -->
+  <div class="navbar-header">
+    <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#bs-navbar-collapse-1">
+      <span class="sr-only">Toggle navigation</span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+    </button>
+    <a class="navbar-brand" href="#">HB WiFi</a>
+  </div>
+
+  <!-- Collect the nav links, forms, and other content for toggling -->
+  <div class="collapse navbar-collapse" id="bs-navbar-collapse-1">
+    <ul class="nav navbar-nav">
+      <li class="active"><a href="#">Guest Reset</a></li>
+    </ul>
+  </div><!-- /.navbar-collapse -->
+</nav>
+
+<div id="reset-success" class="alert alert-success alert-dismissable fade in" style="display: none;">
+  <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+  GracePoint-Guest WiFi successfully reset!
+</div>
+<div id="reset-failure" class="alert alert-danger alert-dismissable fade in" style="display: none;">
+  <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+  GracePoint-Guest WiFi was not successfully reset!
+</div>
+
+<button id="reset-button" type="button" class="btn btn-primary btn-lg center-block">Reset WiFi</button>
+
+%= javascript begin
+$("#reset-button").click(function() {
+  $(".alert").slideUp();
+  $.post("reset", { "reset": true }, function(data, status, jqxhr) {
+    if (data.result == "success") {
+      $("#reset-success").slideDown();
+    } else {
+      $("#reset-failure").slideDown();
+    }
+  }, "json");
+});
+
+% end
+
+@@ layouts/default.html.ep
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= title %></title>
+    %= stylesheet '/css/bootstrap.min.css'
+    %= stylesheet '/css/bootstrap-theme.min.css'
+    %= javascript '/js/jquery.min.js'
+    %= javascript '/js/bootstrap.min.js'
+  </head>
+  <body><%= content %></body>
+</html>
